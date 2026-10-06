@@ -5,6 +5,7 @@ export const SOURCES=[
   {host:'delishkitchen.tv',mapHost:'misc.delishkitchen.tv',name:'DELISH KITCHEN',fallback:'https://delishkitchen.tv/sitemap.xml.gz',recipe:/^\/recipes\//}
 ];
 const DAY=86400000;
+const CRAWLER_VERSION=2;
 const LIMIT=4;
 function allowedSourceUrl(raw,source,map=false){try{const u=new URL(raw);return u.protocol==='https:'&&(u.hostname===source.host||(map&&u.hostname===source.mapHost&&/^\/sitemaps\/[^/]+\.xml(?:\.gz)?$/.test(u.pathname)))&&!u.username&&!u.password&&!u.port?u.href:null;}catch{return null;}}
 export function sitemapEntries(xml,source){const isIndex=/<(?:\w+:)?sitemapindex\b/i.test(xml);const values=[];for(const m of xml.matchAll(/<(?:\w+:)?loc\b[^>]*>([\s\S]*?)<\/(?:\w+:)?loc>/gi)){const raw=m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').trim().replace(/&amp;/g,'&');const url=allowedSourceUrl(raw,source,isIndex);if(url&&(isIndex||source.recipe.test(new URL(url).pathname)))values.push(url);}return{isIndex,urls:[...new Set(values)]};}
@@ -12,7 +13,21 @@ function robotsDelay(text){let agents=[],delay=1,groupDelay=0;function apply(){i
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function state(db,key,initial){const row=await db.prepare('SELECT body FROM crawl_state WHERE key=?').bind(key).first();return row?JSON.parse(row.body):initial;}
 async function saveState(db,key,value){await db.prepare('INSERT INTO crawl_state (key,body) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET body=excluded.body').bind(key,JSON.stringify(value)).run();}
-async function sitemapText(response){const encoded=response.url?.endsWith('.gz')&&!response.headers.get('Content-Encoding');if(encoded){const stream=response.body.pipeThrough(new DecompressionStream('gzip'));return boundedText(new Response(stream),6000000);}return boundedText(response,6000000);}
+export async function readSitemap(response,source,skip=0){
+  const encoded=response.url?.endsWith('.gz')&&!response.headers.get('Content-Encoding');
+  const body=encoded?response.body.pipeThrough(new DecompressionStream('gzip')):response.body;
+  const reader=body.getReader(),decoder=new TextDecoder();let buffer='',bytes=0,index=false,seen=0;const urls=[];
+  while(true){const {value,done}=await reader.read();if(done){if(index)return{...sitemapEntries(buffer,source),finished:true,nextOffset:0};return{isIndex:false,urls,finished:true,nextOffset:seen};}
+    bytes+=value.length;buffer+=decoder.decode(value,{stream:true});
+    if(/<(?:\w+:)?sitemapindex\b/i.test(buffer))index=true;
+    if(index){if(bytes>6000000){await reader.cancel();throw Error('サイトマップ索引が大きすぎます。');}continue;}
+    let match;const re=/<(?:\w+:)?url\b[^>]*>[\s\S]*?<\/(?:\w+:)?url>/gi;
+    let consumed=0;
+    while((match=re.exec(buffer))){consumed=re.lastIndex;for(const url of sitemapEntries('<urlset>'+match[0]+'</urlset>',source).urls){seen++;if(seen>skip)urls.push(url);}if(urls.length>=100){await reader.cancel();return{isIndex:false,urls,finished:false,nextOffset:seen};}}
+    if(consumed)buffer=buffer.slice(consumed);
+    if(buffer.length>200000||bytes>20000000){await reader.cancel();throw Error('このサイトマップは今回の読取上限に達しました。');}
+  }
+}
 
 async function collectSource(source,db,now){
   const report={site:source.name,discovered:0,imported:0,skipped:0,errors:[]};
@@ -35,8 +50,8 @@ async function collectSource(source,db,now){
     await sleep(interval*1000);
     const response=await fetchPage(url);
     if(!response.ok){report.errors.push('サイトマップ取得失敗: '+response.status);info.maps.push(url);break;}
-    let entries;try{entries=sitemapEntries(await sitemapText(response),source);}catch(e){report.errors.push('サイトマップ読み込み失敗: '+e.message);info.maps.push(url);break;}
-    info.visited.push(url);info.visited=info.visited.slice(-500);
+    let entries;try{entries=await readSitemap(response,source,info.offsets?.[url]||0);}catch(e){report.errors.push('サイトマップ読み込み失敗: '+e.message);info.maps.push(url);break;}
+    if(entries.finished){info.visited.push(url);info.visited=info.visited.slice(-500);}else{info.offsets??={};info.offsets[url]=entries.nextOffset;info.maps.unshift(url);}
     if(entries.isIndex)info.maps.push(...entries.urls.filter(u=>!info.visited.includes(u)&&!info.maps.includes(u)).slice(0,200));
     else info.pending.push(...entries.urls.slice(0,10000));
   }
@@ -62,8 +77,8 @@ export async function runCrawl(db){
   if(!lease.meta?.changes)return{status:'busy',message:'収集はすでに実行中です。'};
   try{
     const previous=await state(db,'last_run',null);
-    if(previous?.finishedAt&&now-Date.parse(previous.finishedAt)<20*60*60000)return{status:'already_run',last:previous};
-    const report={status:'succeeded',startedAt:new Date(now).toISOString(),finishedAt:null,imported:0,sources:[]};
+    if(previous?.version===CRAWLER_VERSION&&previous?.finishedAt&&now-Date.parse(previous.finishedAt)<20*60*60000)return{status:'already_run',last:previous};
+    const report={version:CRAWLER_VERSION,status:'succeeded',startedAt:new Date(now).toISOString(),finishedAt:null,imported:0,sources:[]};
     for(const source of SOURCES){try{const r=await collectSource(source,db,now);report.sources.push(r);report.imported+=r.imported;}catch(e){report.sources.push({site:source.name,imported:0,errors:[String(e.message)]});}}
     report.status=report.imported?'succeeded':'no_imports';report.finishedAt=new Date().toISOString();
     await saveState(db,'last_run',report);
