@@ -3,3 +3,5 @@
 [hidden]{display:none!important}.install-note{border:1px solid #bfd1cc;background:#e8f2ef;padding:14px 18px;border-radius:10px;font-size:14px;margin:0 0 24px}body{padding-bottom:env(safe-area-inset-bottom)}header{padding-top:max(22px,env(safe-area-inset-top))}dialog{overscroll-behavior:contain}button{touch-action:manipulation}#url{font-size:16px}@media(max-width:580px){.search input{font-size:16px}header{padding-top:max(16px,env(safe-area-inset-top))}}
 
 .translation-controls{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin-top:20px;padding:16px;background:#e8f2ef;border-radius:10px}.translation-controls label{display:flex;flex-direction:column;gap:7px;font-size:14px}.translation-controls select{max-width:100%;font-size:16px}.translation-status{font-size:14px;overflow-wrap:anywhere}@media(max-width:580px){.translation-controls label{flex:1;min-width:110px}.translation-controls button{flex:1}}
+
+.translation-alternatives{display:flex;flex-wrap:wrap;gap:10px 20px}.translation-alternatives a{font-size:14px}

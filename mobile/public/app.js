@@ -16,7 +16,10 @@ function showDetail(r) {
   const translate=el('button','翻訳する','primary'),original=el('button','原文に戻す');translate.type=original.type='button';
   sourceLabel.append(source);targetLabel.append(target);controls.append(sourceLabel,targetLabel,translate,original);
   const status=el('p','', 'translation-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
-  area.append(controls,el('p','翻訳時にレシピ本文をMyMemoryへ送信します。機械翻訳のため、分量・温度・加熱時間は原文も確認してください。','small'),status);
+  area.append(controls,el('p','アプリ内翻訳ではレシピ本文をMyMemoryへ送信します。「Google翻訳で開く」はGoogleへ送信し別画面で表示します。機械翻訳のため、分量・温度・加熱時間は原文も確認してください。','small'),status);
+  const alternatives=el('div',undefined,'translation-alternatives');area.append(alternatives);
+  function googleLinks(){alternatives.replaceChildren();const text=[r.title,r.description,r.servings,'材料 / Ingredients',...r.ingredients,'手順 / Directions',...r.steps.map((text,i)=>`${i+1}. ${text}`)].filter(Boolean).join('\n');const chars=Array.from(text),parts=[];for(let i=0;i<chars.length;i+=2500)parts.push(chars.slice(i,i+2500).join(''));for(let i=0;i<parts.length;i++){const a=el('a',parts.length===1?'Google翻訳で開く':`Google翻訳で開く（${i+1} / ${parts.length}）`);a.href='https://translate.google.com/?'+new URLSearchParams({sl:source.value,tl:target.value,text:parts[i],op:'translate'});a.target='_blank';a.rel='noopener noreferrer';alternatives.append(a);}}
+  source.onchange=target.onchange=googleLinks;googleLinks();
   const content=el('div');area.append(content);
   function draw(view,language){content.replaceChildren();content.lang=language;if(r.image)content.append(image(r.image,r.title));content.append(el('h2',view.title));const meta=el('div',undefined,'meta');meta.append(el('span',r.minutes===null?'調理時間：記載なし':`調理時間：${r.minutes}分`),el('span',view.servings||'分量：記載なし'));content.append(meta);if(r.author)content.append(el('p',`作者：${r.author}`,'small'));if(view.description)content.append(el('p',view.description));content.append(el('h3','材料'));const list=el('ul');for(const ingredient of view.ingredients)list.append(el('li',ingredient));content.append(view.ingredients.length?list:el('p','材料の記載を取得できませんでした。'));content.append(el('h3','作り方'));const steps=el('ol');for(const step of view.steps)steps.append(el('li',step));content.append(view.steps.length?steps:el('p','手順の記載を取得できませんでした。元のレシピをご確認ください。'));const a=el('a','元のレシピを見る');a.href=r.url;a.target='_blank';a.rel='noopener noreferrer';content.append(a);}
   let operation=0;
@@ -33,7 +36,7 @@ function showDetail(r) {
         if(seq!==detailRevision||op!==operation||!$('detail-dialog').open)return;
         status.textContent=`翻訳中… ${i+1} / ${fields.length}`;
         const item=fields[i],key=JSON.stringify([r.id,item.text,from,to]);let text=translationCache.get(key);
-        if(text===undefined){const data=await api('/api/translate',{id:r.id,source:from,target:to,field:item.field,index:item.index});text=data.text;translationCache.set(key,text);}
+        if(text===undefined){text=await translateInBrowser(item.text,from,to);translationCache.set(key,text);}
         if(item.index===undefined)view[item.field]=text;else view[item.field][item.index]=text;
       }
       if(seq!==detailRevision||op!==operation||!$('detail-dialog').open)return;
