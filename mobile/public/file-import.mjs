@@ -1,16 +1,19 @@
+import {needsOcr,createOcrReader} from './ocr.mjs';
 export function parseDraft(text){
   const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
   const draft={title:lines[0]||'',ingredients:[],steps:[],description:[],servings:'',minutes:''};let section='description';
   for(const line of lines.slice(1)){
-    if(/^(材料|ingredients)\s*[:：]?(?:[（(].*[）)])?$/i.test(line)){section='ingredients';continue;}
-    if(/^(作り方|作りかた|手順|調理手順|instructions|directions|method)\s*[:：]?$/i.test(line)){section='steps';continue;}
-    const time=line.match(/^(?:調理時間|時間|total time)\s*[:：]?\s*(\d+)\s*(?:分|min(?:utes)?)$/i);if(time){draft.minutes=time[1];continue;}
-    const yieldMatch=line.match(/^(?:分量|servings|yield)\s*[:：]\s*(.+)$/i);if(yieldMatch){draft.servings=yieldMatch[1];continue;}
+    const heading=line.normalize('NFKC').replace(/[【】\[\]《》]/g,'').replace(/(?<=[\p{Script=Han}\p{Script=Hiragana}])\s+(?=[\p{Script=Han}\p{Script=Hiragana}])/gu,'');
+    if(/^(材料|ingredients)\s*[:：]?(?:[（(].*[）)])?$/i.test(heading)){section='ingredients';continue;}
+    if(/^(作り方|作りかた|手順|調理手順|instructions|directions|method)\s*[:：]?$/i.test(heading)){section='steps';continue;}
+    const time=heading.match(/^(?:調理時間|時間|total time)\s*[:：]?\s*(\d+)\s*(?:分|min(?:utes)?)$/i);if(time){draft.minutes=time[1];continue;}
+    const yieldMatch=heading.match(/^(?:分量|servings|yield)\s*[:：]\s*(.+)$/i);if(yieldMatch){draft.servings=yieldMatch[1];continue;}
     draft[section].push(section==='steps'?line.replace(/^\d+[.)．、]\s*/,''):line);
   }
   draft.title=draft.title.slice(0,200);draft.description=draft.description.join('\n');return draft;
 }
-export async function extractFile(file,onProgress=()=>{}){
+export async function extractFile(file,onProgress=()=>{},options={}){
+  const {signal}=options;const check=()=>{if(signal?.aborted)throw new DOMException('読み取りを中止しました。','AbortError');};check();
   if(!file.size||file.size>10*1024*1024)throw Error('ファイルは空ではない10MB以内のものを選んでください。');
   const ext=file.name.toLowerCase().split('.').pop();let text;
   if(ext==='txt'){const data=await file.arrayBuffer();text=new TextDecoder('utf-8',{fatal:true}).decode(data);}
@@ -21,14 +24,14 @@ export async function extractFile(file,onProgress=()=>{}){
     const pdfjs=await import('./pdf.mjs');pdfjs.GlobalWorkerOptions.workerSrc=new URL('./pdf.worker.mjs',import.meta.url).href;
     const task=pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false,useWorkerFetch:false});
     task.onPassword=()=>{task.destroy();};
-    let pdf;try{pdf=await task.promise;if(pdf.numPages>100)throw Error('PDFは100ページ以内にしてください。');const pages=[];let length=0;
-      for(let n=1;n<=pdf.numPages;n++){onProgress(`PDFを読み取り中… ${n} / ${pdf.numPages}ページ`);const page=await pdf.getPage(n),content=await page.getTextContent();let line='',lastY=null;const lines=[];
+    let pdf,ocr;const cancel=()=>task.destroy();signal?.addEventListener('abort',cancel,{once:true});try{pdf=await task.promise;check();if(pdf.numPages>100)throw Error('PDFは100ページ以内にしてください。');const pages=[];let length=0;
+      for(let n=1;n<=pdf.numPages;n++){check();onProgress(`PDFを読み取り中… ${n} / ${pdf.numPages}ページ`);const page=await pdf.getPage(n),content=await page.getTextContent();let line='',lastY=null;const lines=[];
         for(const item of content.items){if(!('str' in item))continue;const y=item.transform?.[5];if(lastY!==null&&y!==undefined&&Math.abs(y-lastY)>3&&line){lines.push(line);line='';}line+=item.str+(item.hasEOL?'':' ');lastY=y;if(item.hasEOL){lines.push(line);line='';lastY=null;}}
-        if(line)lines.push(line);const pageText=lines.join('\n');length+=pageText.length;if(length>100000)throw Error('読み取った文章が長すぎます。レシピ部分だけのファイルにしてください。');pages.push(pageText);page.cleanup();}
+        if(line)lines.push(line);let pageText=lines.join('\n');const operators=await page.getOperatorList();const imageOps=[pdfjs.OPS.paintImageXObject,pdfjs.OPS.paintInlineImageXObject,pdfjs.OPS.paintImageXObjectRepeat,pdfjs.OPS.paintImageMaskXObject];const hasImage=operators.fnArray.some(op=>imageOps.includes(op));if(needsOcr(pageText,hasImage)){ocr??=await createOcrReader(onProgress,signal);pageText=await ocr.recognize(page,n,pdf.numPages);}check();length+=pageText.length;if(length>100000)throw Error('読み取った文章が長すぎます。レシピ部分だけのファイルにしてください。');pages.push(pageText);page.cleanup();}
       text=pages.join('\n\n');
-    }finally{await task.destroy();}
+    }finally{signal?.removeEventListener('abort',cancel);if(ocr)await ocr.close();await task.destroy();}
   }else throw Error('PDF・Word（.docx）・テキスト（.txt）に対応しています。');
   if(text.length>100000)throw Error('文章は10万文字以内のファイルにしてください。');
-  if(!text.trim())throw Error('文字を読み取れませんでした。画像のPDFは、元ファイルを添付したまま下の欄へ手入力できます。');
+  if(!text.trim())throw Error('文字を読み取れませんでした。OCRでも文字を確認できない場合は、鮮明なスキャンを選ぶか手入力で補ってください。');
   return text;
 }

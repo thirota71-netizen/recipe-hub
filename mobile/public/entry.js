@@ -1,21 +1,21 @@
-let entryId=crypto.randomUUID(),entryFile=null,fileRevision=0,entrySaving=false;
+let entryId=crypto.randomUUID(),entryFile=null,fileRevision=0,entrySaving=false,entryReading=false,entryAbort;
 const inputFields=['title','minutes','servings','ingredients','steps','description','author'];
 function openEntry(){$('entry-error').textContent='';$('entry-dialog').showModal();$('entry-title').focus();}
 $('open-entry').onclick=openEntry;
 function applyDraft(draft){for(const field of inputFields){if(draft[field]!==undefined)$('entry-'+field).value=Array.isArray(draft[field])?draft[field].join('\n'):draft[field];}}
 $('apply-extracted').onclick=async()=>{const {parseDraft}=await import('/file-import.mjs');applyDraft(parseDraft($('extracted-text').value));$('file-status').textContent='入力欄に反映しました。材料・作り方・分量を確認してから保存してください。';};
 $('entry-file').onchange=async()=>{
-  const seq=++fileRevision;entryFile=$('entry-file').files[0]||null;$('entry-remove-file').hidden=!entryFile;$('extracted-panel').hidden=true;$('entry-error').textContent='';if(!entryFile)return;
+  entryAbort?.abort();entryAbort=new AbortController();const signal=entryAbort.signal;entryReading=false;$('entry-save').disabled=false;const seq=++fileRevision;const snapshot=Object.fromEntries(inputFields.map(field=>[field,$('entry-'+field).value]));entryFile=$('entry-file').files[0]||null;$('entry-remove-file').hidden=!entryFile;$('extracted-panel').hidden=true;$('entry-error').textContent='';if(!entryFile)return;
   const ext=entryFile.name.toLowerCase().split('.').pop();if(!['pdf','docx','txt'].includes(ext)||!entryFile.size||entryFile.size>10*1024*1024){entryFile=null;$('entry-file').value='';$('entry-remove-file').hidden=true;$('file-status').textContent='PDF・Word（.docx）・テキスト（.txt）、10MB以内のファイルを選んでください。';return;}
-  $('file-status').textContent='ファイルを読み取り中…';$('entry-save').disabled=true;
-  try{const {extractFile}=await import('/file-import.mjs');const text=await extractFile(entryFile,message=>{if(seq===fileRevision)$('file-status').textContent=message;});if(seq!==fileRevision)return;$('extracted-text').value=text;$('extracted-panel').hidden=false;$('extracted-panel').open=true;$('file-status').textContent='読み取りました。「文章を入力欄に反映」を押すか、文章を見ながら入力してください。既存の入力内容は自動で上書きしません。';}
+  entryReading=true;$('file-status').textContent='ファイルを読み取り中…';$('entry-save').disabled=true;
+  try{const {extractFile,parseDraft}=await import('/file-import.mjs');const text=await extractFile(entryFile,message=>{if(seq===fileRevision)$('file-status').textContent=message;},{signal});if(seq!==fileRevision)return;$('extracted-text').value=text;$('extracted-panel').hidden=false;$('extracted-panel').open=true;const draft=parseDraft(text);let kept=false;for(const field of inputFields){if(draft[field]===undefined)continue;if($('entry-'+field).value!==snapshot[field]){kept=true;continue;}$('entry-'+field).value=Array.isArray(draft[field])?draft[field].join('\n'):draft[field];}$('file-status').textContent='読み取り結果を入力欄へ自動反映しました。'+(kept?'読み取り中に修正した欄はそのまま残しています。':'')+'分量・材料・手順を確認し、不足する欄を補ってから保存してください。';}
   catch(err){if(seq===fileRevision)$('file-status').textContent=err.message+' 元ファイルを添付し、手入力で保存することもできます。';}
-  finally{if(seq===fileRevision)$('entry-save').disabled=false;}
+  finally{if(seq===fileRevision){entryReading=false;$('entry-save').disabled=false;}}
 };
-$('entry-remove-file').onclick=()=>{fileRevision++;entryFile=null;$('entry-file').value='';$('entry-remove-file').hidden=true;$('file-status').textContent='ファイルを外しました。入力した内容は残っています。';$('extracted-panel').hidden=true;$('entry-save').disabled=false;};
+$('entry-remove-file').onclick=()=>{entryAbort?.abort();entryReading=false;fileRevision++;entryFile=null;$('entry-file').value='';$('entry-remove-file').hidden=true;$('file-status').textContent='ファイルを外しました。入力した内容は残っています。';$('extracted-panel').hidden=true;$('entry-save').disabled=false;};
 document.querySelector('[data-close="entry-dialog"]').onclick=()=>$('entry-dialog').close();
 $('entry-form').onsubmit=async e=>{
-  e.preventDefault();if(entrySaving)return;entrySaving=true;$('entry-save').disabled=true;$('entry-file').disabled=true;$('entry-remove-file').disabled=true;$('entry-save').textContent='保存中…';$('entry-error').textContent='';
+  e.preventDefault();if(entrySaving||entryReading)return;entrySaving=true;$('entry-save').disabled=true;$('entry-file').disabled=true;$('entry-remove-file').disabled=true;$('entry-save').textContent='保存中…';$('entry-error').textContent='';
   const recipe={id:entryId};for(const field of inputFields)recipe[field]=$('entry-'+field).value.trim();recipe.minutes=recipe.minutes?Number(recipe.minutes):null;for(const field of ['ingredients','steps'])recipe[field]=recipe[field].split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
   try{let response;if(entryFile){const body=new FormData();body.append('recipe',JSON.stringify(recipe));body.append('file',entryFile);response=await fetch('/api/entries',{method:'POST',body});}else response=await fetch('/api/entries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(recipe)});
     const data=await response.json();if(!response.ok)throw Error(data.error||'保存できませんでした。');
