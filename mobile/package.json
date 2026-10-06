@@ -1,0 +1,1 @@
+{"name":"recipe-hub-mobile","private":true,"type":"module","scripts":{"build":"node scripts/build.mjs","db:generate":"drizzle-kit generate","test":"node --test tests/worker.test.mjs"},"devDependencies":{"drizzle-kit":"^0.31.0","drizzle-orm":"^0.44.0"}}
