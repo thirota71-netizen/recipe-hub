@@ -3,7 +3,11 @@ for(const [source,target] of [['node_modules/pdfjs-dist/legacy/build/pdf.mjs','p
 for(const [source,target] of [['node_modules/tesseract.js/dist/tesseract.min.js','public/tesseract.min.js'],['node_modules/tesseract.js/dist/worker.min.js','public/tesseract.worker.min.js']])fs.copyFileSync(source,target);
 await import('./ocr-manifest.mjs');
 const assets={};
-for(const name of fs.readdirSync('public')){const p='public/'+name;const binary=name.endsWith('.png');assets['/'+name]={body:fs.readFileSync(p,binary?'base64':'utf8'),binary};}
+// Japanese CID fonts need PDF.js's packed character maps, served locally.
+fs.cpSync('node_modules/pdfjs-dist/cmaps','public/cmaps',{recursive:true});
+fs.cpSync('node_modules/pdfjs-dist/standard_fonts','public/pdf-fonts',{recursive:true});
+function embed(directory,prefix=''){for(const name of fs.readdirSync(directory)){const p=directory+'/'+name,url=prefix+'/'+name;if(fs.statSync(p).isDirectory()){embed(p,url);continue;}const binary=/\.(?:png|bcmap|pfb|ttf)$/.test(name);assets[url]={body:fs.readFileSync(p,binary?'base64':'utf8'),binary};}}
+embed('public');
 const source=fs.readFileSync('worker/index.js','utf8');
 fs.mkdirSync('dist/server',{recursive:true});
 fs.writeFileSync('dist/server/index.js','const ASSETS='+JSON.stringify(assets)+';\n'+source);

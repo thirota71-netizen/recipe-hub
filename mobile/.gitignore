@@ -7,3 +7,5 @@ public/pdf.worker.mjs
 public/mammoth.browser.js
 public/tesseract.min.js
 public/tesseract.worker.min.js
+public/cmaps/
+public/pdf-fonts/

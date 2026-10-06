@@ -25,5 +25,13 @@ test('selecting a real PDF automatically fills the actual form without extra cli
   node('entry-file').files=[new File([fs.readFileSync('tests/fixtures/recipe.pdf')],'recipe.pdf')];
   await node('entry-file').onchange();
   assert.equal(node('entry-title').value,'Chicken Recipe');assert.match(node('entry-ingredients').value,/Chicken 200g/);assert.match(node('entry-steps').value,/20 minutes/);assert.equal(node('entry-save').disabled,false);assert.match(node('file-status').textContent,/自動反映/);
+  // Japanese CID fonts require CMaps. This own fixture also has two columns,
+  // wrapped ingredient quantities, notes before ingredients and a second page.
+  node('entry-file').files=[new File([fs.readFileSync('tests/fixtures/japanese-columns.pdf')],'japanese.pdf')];
+  await node('entry-file').onchange();
+  assert.equal(node('entry-title').value,'りんごケーキ');assert.equal(node('entry-author').value,'テスト作者');
+  assert.deepEqual(node('entry-ingredients').value.split('\n'),['■ 生地（作りやすい量.8個分）','りんご 1個','砂糖 大さじ2（甘い味なら大さじ3）','水 200㏄','レモン汁 適量','薄力粉 100ｇ']);
+  assert.deepEqual(node('entry-steps').value.split('\n'),['りんごを切る。','材料をボウルに入れて混ぜ合わせる。','オーブンで焼く。']);
+  assert.equal(node('entry-description').value,'均等に焼く。\n家族のおやつです。');assert.equal(node('entry-retry').hidden,true);
   const {createCanvas}=await import('@napi-rs/canvas');globalThis.document={createElement:()=>createCanvas(1,1)};globalThis.Tesseract={createWorker:async()=>({recognize:async()=>({data:{text:'鶏肉料理\n■材料・分量（2人分）\n鶏肉 200g\n①鶏肉を切る\n②20分焼く'}}),terminate:async()=>{}})};try{node('entry-file').files=[new File([fs.readFileSync('tests/fixtures/scan.pdf')],'scan.pdf')];await node('entry-file').onchange();assert.equal(node('entry-title').value,'鶏肉料理');assert.equal(node('entry-ingredients').value,'鶏肉 200g');assert.match(node('entry-steps').value,/20分焼く/);assert.equal(node('entry-servings').value,'2人分');assert.equal(node('entry-retry').hidden,true);}finally{delete globalThis.document;delete globalThis.Tesseract;}
 });

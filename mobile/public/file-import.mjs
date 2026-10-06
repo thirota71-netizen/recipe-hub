@@ -10,7 +10,8 @@ export async function extractFile(file,onProgress=()=>{},options={}){
     text=(await globalThis.mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()})).value;
   }else if(ext==='pdf'){
     const pdfjs=await import('./pdf.mjs');pdfjs.GlobalWorkerOptions.workerSrc=new URL('./pdf.worker.mjs',import.meta.url).href;
-    const task=pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false,useWorkerFetch:false});
+    const assetDirectory=name=>{const url=new URL(name,import.meta.url);return url.protocol==='file:'?decodeURIComponent(url.pathname):url.href;};
+    const task=pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer()),cMapUrl:assetDirectory('./cmaps/'),cMapPacked:true,standardFontDataUrl:assetDirectory('./pdf-fonts/'),isEvalSupported:false,useWorkerFetch:false});
     task.onPassword=()=>{task.destroy();};
     let pdf,ocr;const cancel=()=>task.destroy();signal?.addEventListener('abort',cancel,{once:true});try{pdf=await task.promise;check();if(pdf.numPages>100)throw Error('PDFは100ページ以内にしてください。');const pages=[];let length=0;
       for(let n=1;n<=pdf.numPages;n++){check();onProgress(`PDFを読み取り中… ${n} / ${pdf.numPages}ページ`);const page=await pdf.getPage(n),content=await page.getTextContent();let line='',lastY=null;const lines=[];
