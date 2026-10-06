@@ -8,6 +8,8 @@
     "test": "node --test tests/*.test.mjs"
   },
   "devDependencies": {
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/jpn": "^1.0.0",
     "drizzle-kit": "^0.31.0",
     "drizzle-orm": "^0.44.0",
     "mammoth": "^1.13.0",
