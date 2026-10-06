@@ -6,3 +6,5 @@ fs.mkdirSync('dist/server',{recursive:true});
 fs.writeFileSync('dist/server/index.js','const ASSETS='+JSON.stringify(assets)+';\n'+source);
 fs.copyFileSync('worker/crawler.js','dist/server/crawler.js');
 console.log('Built Worker with embedded PWA assets');
+
+fs.copyFileSync('worker/translation.js','dist/server/translation.js');
