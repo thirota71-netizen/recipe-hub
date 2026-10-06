@@ -1,5 +1,5 @@
 import {runCrawl,crawlStatus} from './crawler.js';
-export const SITES={'www.kurashiru.com':'クラシル','delishkitchen.tv':'DELISH KITCHEN','cookpad.com':'クックパッド','recipe.rakuten.co.jp':'楽天レシピ','www.kikkoman.co.jp':'キッコーマン','www.sirogohan.com':'白ごはん.com'};
+export const SITES={'www.kurashiru.com':'クラシル','delishkitchen.tv':'DELISH KITCHEN','cookpad.com':'クックパッド','recipe.rakuten.co.jp':'楽天レシピ','www.kikkoman.co.jp':'キッコーマン','www.sirogohan.com':'白ごはん.com','cookien.com':'つくおき','www.justonecookbook.com':'Just One Cookbook'};
 const UA='RecipeHub/1.0 (personal recipe reader)';
 export function validateUrl(value){let u;try{u=new URL(value);}catch{throw Error('レシピURLを入力してください。');}if(u.protocol!=='https:'||!SITES[u.hostname]||u.username||u.password||(u.port&&u.port!=='443'))throw Error('対応サイトのHTTPSレシピURLを入力してください。');u.hash='';return u.href;}
 const clean=v=>String(v??'').replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').trim();

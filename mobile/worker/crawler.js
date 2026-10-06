@@ -2,10 +2,12 @@ import {fetchPage,boundedText,robotsAllowed,importRecipe} from './index.js';
 
 export const SOURCES=[
   {host:'www.kikkoman.co.jp',name:'キッコーマン',fallback:'https://www.kikkoman.co.jp/homecook/sitemap-images.xml',recipe:/^\/homecook\/search\/recipe\//},
-  {host:'delishkitchen.tv',mapHost:'misc.delishkitchen.tv',name:'DELISH KITCHEN',fallback:'https://delishkitchen.tv/sitemap.xml.gz',recipe:/^\/recipes\//}
+  {host:'delishkitchen.tv',mapHost:'misc.delishkitchen.tv',name:'DELISH KITCHEN',fallback:'https://delishkitchen.tv/sitemap.xml.gz',recipe:/^\/recipes\//},
+  {host:'cookien.com',name:'つくおき',fallback:'https://cookien.com/sitemap.xml',recipe:/^\/recipe\/\d+\//},
+  {host:'www.justonecookbook.com',name:'Just One Cookbook',fallback:'https://www.justonecookbook.com/sitemap_index.xml',mapPattern:/post-sitemap/,recipe:/^\/(?!about\/|contact\/|privacy-policy\/|start-here\/)[a-z0-9-]+\/$/}
 ];
 const DAY=86400000;
-const CRAWLER_VERSION=2;
+const CRAWLER_VERSION=3;
 // The collection day starts at 06:00 Japan time, matching the cloud schedule.
 export const runWindow=ms=>Math.floor((ms+3*60*60000)/DAY);
 const LIMIT=4;
@@ -54,7 +56,7 @@ async function collectSource(source,db,now){
     if(!response.ok){report.errors.push('サイトマップ取得失敗: '+response.status);info.maps.push(url);break;}
     let entries;try{entries=await readSitemap(response,source,info.offsets?.[url]||0);}catch(e){report.errors.push('サイトマップ読み込み失敗: '+e.message);info.maps.push(url);break;}
     if(entries.finished){info.visited.push(url);info.visited=info.visited.slice(-500);}else{info.offsets??={};info.offsets[url]=entries.nextOffset;info.maps.unshift(url);}
-    if(entries.isIndex)info.maps.push(...entries.urls.filter(u=>!info.visited.includes(u)&&!info.maps.includes(u)).slice(0,200));
+    if(entries.isIndex)info.maps.push(...entries.urls.filter(u=>(!source.mapPattern||source.mapPattern.test(new URL(u).pathname))&&!info.visited.includes(u)&&!info.maps.includes(u)).slice(0,200));
     else info.pending.push(...entries.urls.slice(0,10000));
   }
   const urls=info.pending.splice(0,20).filter(u=>robotsAllowed(robots,u));
