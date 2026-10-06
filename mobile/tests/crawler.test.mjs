@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import fs from 'node:fs';
-import {runCrawl,crawlStatus,sitemapEntries,SOURCES} from '../dist/server/crawler.js';
+import {runCrawl,crawlStatus,sitemapEntries,SOURCES,runWindow} from '../dist/server/crawler.js';
+
+test('collection window changes at 06:00 Japan time',()=>{const midnight=runWindow(Date.parse('2026-10-07T00:15:00+09:00'));assert.equal(runWindow(Date.parse('2026-10-07T05:59:59+09:00')),midnight);assert.equal(runWindow(Date.parse('2026-10-07T06:00:00+09:00')),midnight+1);});
 
 function database(){const db=new DatabaseSync(':memory:');for(const file of fs.readdirSync('drizzle').filter(f=>f.endsWith('.sql')).sort())db.exec(fs.readFileSync('drizzle/'+file,'utf8'));const wrap=(sql,values=[])=>({bind:(...args)=>wrap(sql,args),first:async()=>db.prepare(sql).get(...values),all:async()=>({results:db.prepare(sql).all(...values)}),run:async()=>({meta:{changes:Number(db.prepare(sql).run(...values).changes)}})});return{prepare:wrap,batch:async stmts=>{const result=[];for(const s of stmts)result.push(await s.run());return result;},close:()=>db.close()};}
 test('sitemap excludes untrusted domains and non-recipe pages',()=>{const map=sitemapEntries('<urlset><url><loc>https://www.kikkoman.co.jp/homecook/search/recipe/1/</loc></url><url><loc>https://evil.test/a</loc></url><url><loc>https://www.kikkoman.co.jp/company/</loc></url></urlset>',SOURCES[0]);assert.deepEqual(map.urls,['https://www.kikkoman.co.jp/homecook/search/recipe/1/']);const index=sitemapEntries('<sitemapindex><sitemap><loc>https://misc.delishkitchen.tv/sitemaps/sitemap1.xml.gz</loc></sitemap></sitemapindex>',SOURCES[1]);assert.equal(index.urls.length,1);});

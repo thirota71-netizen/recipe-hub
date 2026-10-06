@@ -6,6 +6,8 @@ export const SOURCES=[
 ];
 const DAY=86400000;
 const CRAWLER_VERSION=2;
+// The collection day starts at 06:00 Japan time, matching the cloud schedule.
+export const runWindow=ms=>Math.floor((ms+3*60*60000)/DAY);
 const LIMIT=4;
 function allowedSourceUrl(raw,source,map=false){try{const u=new URL(raw);return u.protocol==='https:'&&(u.hostname===source.host||(map&&u.hostname===source.mapHost&&/^\/sitemaps\/[^/]+\.xml(?:\.gz)?$/.test(u.pathname)))&&!u.username&&!u.password&&!u.port?u.href:null;}catch{return null;}}
 export function sitemapEntries(xml,source){const isIndex=/<(?:\w+:)?sitemapindex\b/i.test(xml);const values=[];for(const m of xml.matchAll(/<(?:\w+:)?loc\b[^>]*>([\s\S]*?)<\/(?:\w+:)?loc>/gi)){const raw=m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').trim().replace(/&amp;/g,'&');const url=allowedSourceUrl(raw,source,isIndex);if(url&&(isIndex||source.recipe.test(new URL(url).pathname)))values.push(url);}return{isIndex,urls:[...new Set(values)]};}
@@ -77,7 +79,7 @@ export async function runCrawl(db){
   if(!lease.meta?.changes)return{status:'busy',message:'収集はすでに実行中です。'};
   try{
     const previous=await state(db,'last_run',null);
-    if(previous?.version===CRAWLER_VERSION&&previous?.finishedAt&&now-Date.parse(previous.finishedAt)<20*60*60000)return{status:'already_run',last:previous};
+    if(previous?.version===CRAWLER_VERSION&&previous?.finishedAt&&runWindow(now)===runWindow(Date.parse(previous.finishedAt)))return{status:'already_run',last:previous};
     const report={version:CRAWLER_VERSION,status:'succeeded',startedAt:new Date(now).toISOString(),finishedAt:null,imported:0,sources:[]};
     for(const source of SOURCES){try{const r=await collectSource(source,db,now);report.sources.push(r);report.imported+=r.imported;}catch(e){report.sources.push({site:source.name,imported:0,errors:[String(e.message)]});}}
     report.status=report.imported?'succeeded':'no_imports';report.finishedAt=new Date().toISOString();
