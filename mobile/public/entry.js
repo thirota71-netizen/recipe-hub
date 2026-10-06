@@ -7,9 +7,12 @@ $('apply-extracted').onclick=async()=>{const {parseDraft}=await import('/file-im
 $('entry-file').onchange=async()=>{
   entryAbort?.abort();entryAbort=new AbortController();const signal=entryAbort.signal;entryReading=false;$('entry-save').disabled=false;const seq=++fileRevision;const snapshot=Object.fromEntries(inputFields.map(field=>[field,$('entry-'+field).value]));entryFile=$('entry-file').files[0]||null;$('entry-remove-file').hidden=!entryFile;$('extracted-panel').hidden=true;$('entry-error').textContent='';if(!entryFile)return;
   const ext=entryFile.name.toLowerCase().split('.').pop();if(!['pdf','docx','txt'].includes(ext)||!entryFile.size||entryFile.size>10*1024*1024){entryFile=null;$('entry-file').value='';$('entry-remove-file').hidden=true;$('file-status').textContent='PDF・Word（.docx）・テキスト（.txt）、10MB以内のファイルを選んでください。';return;}
-  entryReading=true;$('file-status').textContent='ファイルを読み取り中…';$('entry-save').disabled=true;
-  try{const {extractFile,parseDraft}=await import('/file-import.mjs');const text=await extractFile(entryFile,message=>{if(seq===fileRevision)$('file-status').textContent=message;},{signal});if(seq!==fileRevision)return;$('extracted-text').value=text;$('extracted-panel').hidden=false;$('extracted-panel').open=true;const draft=parseDraft(text);let kept=false;for(const field of inputFields){if(draft[field]===undefined)continue;if($('entry-'+field).value!==snapshot[field]){kept=true;continue;}$('entry-'+field).value=Array.isArray(draft[field])?draft[field].join('\n'):draft[field];}$('file-status').textContent='読み取り結果を入力欄へ自動反映しました。'+(kept?'読み取り中に修正した欄はそのまま残しています。':'')+'分量・材料・手順を確認し、不足する欄を補ってから保存してください。';}
-  catch(err){if(seq===fileRevision)$('file-status').textContent=err.message+' 元ファイルを添付し、手入力で保存することもできます。';}
+  entryReading=true;$('entry-retry').hidden=true;$('file-status').textContent='ファイルを読み取り中…';$('entry-save').disabled=true;
+  try{const {extractFile,parseDraft,applyAutoDraft}=await import('/file-import.mjs');let text=await extractFile(entryFile,message=>{if(seq===fileRevision)$('file-status').textContent=message;},{signal});if(seq!==fileRevision)return;let parsed=parseDraft(text);if(ext==='pdf'&&(!parsed.ingredients.length||!parsed.steps.length)){
+$('file-status').textContent='レシピの項目を確認できないため、画像としてもう一度読み取っています…';text=await extractFile(entryFile,message=>{if(seq===fileRevision)$('file-status').textContent=message;},{signal,forceOcr:true});if(seq!==fileRevision)return;parsed=parseDraft(text);}
+$('extracted-text').value=text;$('extracted-panel').hidden=false;$('extracted-panel').open=true;const kept=applyAutoDraft(parsed,snapshot,Object.fromEntries(inputFields.map(field=>[field,$('entry-'+field)])));$('entry-retry').hidden=Boolean(parsed.ingredients.length&&parsed.steps.length);
+$('file-status').textContent='読み取り結果を入力欄へ自動反映しました。'+(kept?'読み取り中に修正した欄はそのまま残しています。':'')+'分量・材料・手順を確認し、不足する欄を補ってから保存してください。';}
+  catch(err){if(seq===fileRevision){$('file-status').textContent='自動読み取りに失敗しました。'+err.message;$('entry-retry').hidden=false;}}
   finally{if(seq===fileRevision){entryReading=false;$('entry-save').disabled=false;}}
 };
 $('entry-remove-file').onclick=()=>{entryAbort?.abort();entryReading=false;fileRevision++;entryFile=null;$('entry-file').value='';$('entry-remove-file').hidden=true;$('file-status').textContent='ファイルを外しました。入力した内容は残っています。';$('extracted-panel').hidden=true;$('entry-save').disabled=false;};
@@ -24,3 +27,5 @@ $('entry-form').onsubmit=async e=>{
   }catch(err){$('entry-error').textContent=err.message;}
   finally{entrySaving=false;$('entry-save').disabled=false;$('entry-file').disabled=false;$('entry-remove-file').disabled=false;$('entry-save').textContent='確認して保存';}
 };
+
+$('entry-retry').onclick=()=>{if(!entrySaving&&!entryReading&&entryFile)$('entry-file').onchange();};

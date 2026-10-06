@@ -6,7 +6,7 @@ export function ocrScale(width,height){return Math.min(2.5,Math.sqrt(4000000/(wi
 export async function createOcrReader(onProgress,signal){
   abort(signal);const engine=await loadLibrary();abort(signal);
   onProgress('OCRの日本語・英語データを準備中… 初回は少し時間がかかります。');
-  let worker;try{worker=await engine.createWorker('jpn+eng',1,{workerPath:'/tesseract.worker.min.js',workerBlobURL:false,corePath:'https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0',logger:message=>{if(!signal?.aborted&&message.status==='recognizing text')onProgress(`文字を読み取り中… ${Math.round(message.progress*100)}%`);}});}catch{throw Error('OCRの言語データを読み込めませんでした。インターネット接続を確認して再度お試しください。');}
+  let worker;try{worker=await engine.createWorker('jpn+eng',1,{workerPath:'/tesseract.worker.min.js',workerBlobURL:false,corePath:new URL('/api/ocr-assets',import.meta.url).href,langPath:new URL('/api/ocr-assets',import.meta.url).href,logger:message=>{if(!signal?.aborted){if(message.status==='recognizing text')onProgress(`文字を読み取り中… ${Math.round(message.progress*100)}%`);else if(message.status.includes('loading')||message.status.includes('initializing'))onProgress(`OCRを準備中… ${Math.round(message.progress*100)}%`);}}});}catch{throw Error('OCRの言語データを読み込めませんでした。インターネット接続を確認して再度お試しください。');}
   if(signal?.aborted){await worker.terminate();abort(signal);}
   const cancel=()=>worker.terminate().catch(()=>{});signal?.addEventListener('abort',cancel,{once:true});
   return{

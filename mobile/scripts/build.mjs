@@ -12,3 +12,5 @@ console.log('Built Worker with embedded PWA assets');
 fs.copyFileSync('worker/translation.js','dist/server/translation.js');
 
 fs.copyFileSync('worker/entries.js','dist/server/entries.js');
+
+fs.copyFileSync('worker/ocr-assets.js','dist/server/ocr-assets.js');
