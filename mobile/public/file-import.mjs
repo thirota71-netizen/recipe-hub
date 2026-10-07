@@ -1,5 +1,15 @@
 import {needsOcr,createOcrReader} from './ocr.mjs';
 export {parseDraft,applyAutoDraft} from './recipe-parser.mjs';
+export async function readPdfTextContent(page,signal){
+  if(page.isPureXfa)return page.getTextContent();
+  // WebKit can provide ReadableStream.getReader without an async iterator.
+  // PDF.js 6's getTextContent uses `for await`, which fails on those devices.
+  const reader=page.streamTextContent().getReader(),items=[];
+  const check=()=>{if(signal?.aborted)throw new DOMException('読み取りを中止しました。','AbortError');};
+  const cancel=()=>reader.cancel().catch(()=>{});signal?.addEventListener('abort',cancel,{once:true});
+  try{check();while(true){const {value,done}=await reader.read();check();if(done)break;items.push(...value.items);}return{items};}
+  finally{signal?.removeEventListener('abort',cancel);reader.releaseLock();}
+}
 export async function extractFile(file,onProgress=()=>{},options={}){
   const {signal}=options;const check=()=>{if(signal?.aborted)throw new DOMException('読み取りを中止しました。','AbortError');};check();
   if(!file.size||file.size>10*1024*1024)throw Error('ファイルは空ではない10MB以内のものを選んでください。');
@@ -19,7 +29,7 @@ export async function extractFile(file,onProgress=()=>{},options={}){
     const task=pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer()),cMapUrl:assetDirectory('./cmaps/'),cMapPacked:true,standardFontDataUrl:assetDirectory('./pdf-fonts/'),wasmUrl:assetDirectory('./pdf-wasm/'),isImageDecoderSupported:!ios,isOffscreenCanvasSupported:!ios,isEvalSupported:false,useWorkerFetch:false});
     task.onPassword=()=>{task.destroy();};
     let pdf,ocr;const cancel=()=>task.destroy();signal?.addEventListener('abort',cancel,{once:true});try{pdf=await task.promise;check();if(pdf.numPages>100)throw Error('PDFは100ページ以内にしてください。');const pages=[];let length=0;
-      for(let n=1;n<=pdf.numPages;n++){check();onProgress(`PDFを読み取り中… ${n} / ${pdf.numPages}ページ`);const page=await pdf.getPage(n),content=await page.getTextContent();let line='',lastY=null;const lines=[];
+      for(let n=1;n<=pdf.numPages;n++){check();onProgress(`PDFを読み取り中… ${n} / ${pdf.numPages}ページ`);const page=await pdf.getPage(n),content=await readPdfTextContent(page,signal);let line='',lastY=null;const lines=[];
         for(const item of content.items){if(!('str' in item))continue;const y=item.transform?.[5];if(lastY!==null&&y!==undefined&&Math.abs(y-lastY)>3&&line){lines.push(line);line='';}line+=item.str+(item.hasEOL?'':' ');lastY=y;if(item.hasEOL){lines.push(line);line='';lastY=null;}}
         if(line)lines.push(line);let pageText=lines.join('\n');
         // Text extraction must not depend on decoding recipe photographs.
