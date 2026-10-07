@@ -9,3 +9,4 @@ public/tesseract.min.js
 public/tesseract.worker.min.js
 public/cmaps/
 public/pdf-fonts/
+public/pdf-wasm/

@@ -6,7 +6,8 @@ const assets={};
 // Japanese CID fonts need PDF.js's packed character maps, served locally.
 fs.cpSync('node_modules/pdfjs-dist/cmaps','public/cmaps',{recursive:true});
 fs.cpSync('node_modules/pdfjs-dist/standard_fonts','public/pdf-fonts',{recursive:true});
-function embed(directory,prefix=''){for(const name of fs.readdirSync(directory)){const p=directory+'/'+name,url=prefix+'/'+name;if(fs.statSync(p).isDirectory()){embed(p,url);continue;}const binary=/\.(?:png|bcmap|pfb|ttf)$/.test(name);assets[url]={body:fs.readFileSync(p,binary?'base64':'utf8'),binary};}}
+fs.cpSync('node_modules/pdfjs-dist/wasm','public/pdf-wasm',{recursive:true});
+function embed(directory,prefix=''){for(const name of fs.readdirSync(directory)){const p=directory+'/'+name,url=prefix+'/'+name;if(fs.statSync(p).isDirectory()){embed(p,url);continue;}const binary=/\.(?:png|bcmap|pfb|ttf|wasm)$/.test(name);assets[url]={body:fs.readFileSync(p,binary?'base64':'utf8'),binary};}}
 embed('public');
 const source=fs.readFileSync('worker/index.js','utf8');
 fs.mkdirSync('dist/server',{recursive:true});
